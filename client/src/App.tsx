@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Editor } from '@monaco-editor/react';
-import { Save, RefreshCw, FileCode } from 'lucide-react';
+import { Save, RefreshCw, FileCode, Lock, LogOut } from 'lucide-react';
 import { FileTree } from './components/FileTree';
 import type { FileItem } from './types';
 
-const API_BASE = 'http://localhost:3001/api';
+// Use relative API base or environment variable
+const API_BASE = (import.meta.env.VITE_API_BASE as string) || '/api';
 
 function App() {
   const [fileTree, setFileTree] = useState<FileItem[]>([]);
@@ -12,23 +13,73 @@ function App() {
   const [content, setContent] = useState<string>('');
   const [originalContent, setOriginalContent] = useState<string>('');
   const [isSaving, setIsSaving] = useState(false);
+  
+  // Auth State
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [password, setPassword] = useState(localStorage.getItem('editor_password') || '');
+  const [loginError, setLoginError] = useState('');
+
+  const authHeaders = {
+    'Content-Type': 'application/json',
+    'x-editor-password': password
+  };
 
   const fetchFileTree = useCallback(async () => {
+    if (!isAuthenticated) return;
     try {
-      const response = await fetch(`${API_BASE}/files`);
+      const response = await fetch(`${API_BASE}/files`, { headers: authHeaders });
+      if (response.status === 401) {
+        setIsAuthenticated(false);
+        return;
+      }
       const data = await response.json();
       setFileTree(data.tree || []);
     } catch (error) {
       console.error('Failed to fetch file tree:', error);
     }
+  }, [isAuthenticated, password]);
+
+  useEffect(() => {
+    if (password) {
+      handleLogin(password);
+    }
   }, []);
 
   useEffect(() => {
-    fetchFileTree();
-  }, [fetchFileTree]);
+    if (isAuthenticated) {
+      fetchFileTree();
+    }
+  }, [isAuthenticated, fetchFileTree]);
+
+  const handleLogin = async (inputPassword: string) => {
+    try {
+      const response = await fetch(`${API_BASE}/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: inputPassword })
+      });
+
+      if (response.ok) {
+        setIsAuthenticated(true);
+        setPassword(inputPassword);
+        localStorage.setItem('editor_password', inputPassword);
+        setLoginError('');
+      } else {
+        setLoginError('Invalid password');
+        setIsAuthenticated(false);
+      }
+    } catch (error) {
+      setLoginError('Server connection failed');
+    }
+  };
+
+  const handleLogout = () => {
+    setIsAuthenticated(false);
+    setPassword('');
+    localStorage.removeItem('editor_password');
+  };
 
   const openFile = async (path: string) => {
-    // Basic check for binary files
     const binaryExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.ico', '.pdf', '.zip'];
     if (binaryExtensions.some(ext => path.toLowerCase().endsWith(ext))) {
       alert('열 수 없는 파일입니다.');
@@ -36,7 +87,9 @@ function App() {
     }
 
     try {
-      const response = await fetch(`${API_BASE}/file?path=${encodeURIComponent(path)}`);
+      const response = await fetch(`${API_BASE}/file?path=${encodeURIComponent(path)}`, {
+        headers: authHeaders
+      });
       if (!response.ok) throw new Error('Failed to load file');
       const text = await response.text();
       setActiveFile(path);
@@ -48,30 +101,6 @@ function App() {
     }
   };
 
-  const handleEditorWillMount = (monaco: any) => {
-    const options = {
-      target: monaco.languages.typescript.ScriptTarget.ESNext,
-      allowNonTsExtensions: true,
-      moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
-      module: monaco.languages.typescript.ModuleKind.ESNext,
-      noEmit: true,
-      // React 17+ style JSX (does not require 'import React')
-      jsx: 4, // monaco.languages.typescript.JsxEmit.ReactJSX
-      allowJs: true,
-      typeRoots: ['node_modules/@types'],
-      allowSyntheticDefaultImports: true,
-      esModuleInterop: true,
-    };
-
-    monaco.languages.typescript.typescriptDefaults.setCompilerOptions(options);
-    monaco.languages.typescript.javascriptDefaults.setCompilerOptions(options);
-
-    monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
-      noSemanticValidation: true,
-      noSyntaxValidation: false,
-    });
-  };
-
   const saveFile = async () => {
     if (!activeFile || isSaving) return;
 
@@ -79,7 +108,7 @@ function App() {
     try {
       const response = await fetch(`${API_BASE}/file`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders,
         body: JSON.stringify({ path: activeFile, content })
       });
 
@@ -93,7 +122,6 @@ function App() {
     }
   };
 
-  // Handle Ctrl+S
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
@@ -103,9 +131,66 @@ function App() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [content, activeFile]);
+  }, [content, activeFile, isAuthenticated]);
+
+  const handleEditorWillMount = (monaco: any) => {
+    const options = {
+      target: monaco.languages.typescript.ScriptTarget.ESNext,
+      allowNonTsExtensions: true,
+      moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
+      module: monaco.languages.typescript.ModuleKind.ESNext,
+      noEmit: true,
+      jsx: 4, 
+      allowJs: true,
+      typeRoots: ['node_modules/@types'],
+      allowSyntheticDefaultImports: true,
+      esModuleInterop: true,
+    };
+    monaco.languages.typescript.typescriptDefaults.setCompilerOptions(options);
+    monaco.languages.typescript.javascriptDefaults.setCompilerOptions(options);
+
+    monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
+      noSemanticValidation: true,
+    });
+  };
 
   const isDirty = content !== originalContent;
+
+  if (!isAuthenticated) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-[#0d1117] text-white">
+        <div className="bg-[#161b22] p-8 rounded-lg shadow-xl border border-gray-800 w-full max-w-md">
+          <div className="flex flex-col items-center gap-4 mb-8">
+            <div className="bg-blue-600 p-3 rounded-full">
+              <Lock size={32} />
+            </div>
+            <h1 className="text-2xl font-bold">Protected Area</h1>
+            <p className="text-gray-400 text-sm">Enter password to access the editor</p>
+          </div>
+          <form onSubmit={(e) => {
+            e.preventDefault();
+            const val = (e.currentTarget.elements.namedItem('pwd') as HTMLInputElement).value;
+            handleLogin(val);
+          }}>
+            <input
+              type="password"
+              name="pwd"
+              placeholder="Password"
+              autoFocus
+              className="w-full bg-[#0d1117] border border-gray-700 rounded-md py-2 px-4 mb-4 focus:outline-none focus:border-blue-500 transition-colors"
+            />
+            {loginError && <p className="text-red-500 text-xs mb-4">{loginError}</p>}
+            <button
+              type="submit"
+              className="w-full bg-blue-600 hover:bg-blue-500 py-2 rounded-md font-semibold transition-colors"
+            >
+              Sign In
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen w-full bg-[#1e1e1e] text-gray-300 overflow-hidden">
@@ -116,12 +201,22 @@ function App() {
             <FileCode className="text-blue-400" size={20} />
             <span>OpenClaw Editor</span>
           </div>
-          <button 
-            onClick={fetchFileTree}
-            className="p-1 hover:bg-gray-800 rounded text-gray-400 hover:text-white transition-colors"
-          >
-            <RefreshCw size={16} />
-          </button>
+          <div className="flex items-center gap-1">
+            <button 
+              onClick={fetchFileTree}
+              className="p-1 hover:bg-gray-800 rounded text-gray-400 hover:text-white transition-colors"
+              title="Refresh"
+            >
+              <RefreshCw size={16} />
+            </button>
+            <button 
+              onClick={handleLogout}
+              className="p-1 hover:bg-red-900/30 rounded text-gray-400 hover:text-red-400 transition-colors"
+              title="Logout"
+            >
+              <LogOut size={16} />
+            </button>
+          </div>
         </div>
         <div className="flex-1 overflow-hidden">
           <FileTree 
