@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Code Editor</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app">
+        <div id="sidebar">
+            <div class="sidebar-header">
+                <h3>Files</h3>
+                <button id="refresh-btn">🔄</button>
+            </div>
+            <ul id="file-list"></ul>
+        </div>
+        <div id="main">
+            <div class="tabs">
+                <span id="current-file-name">No file opened</span>
+                <button id="save-btn" disabled>Save (Ctrl+S)</button>
+            </div>
+            <div id="editor-container"></div>
+        </div>
+    </div>
+
+    <!-- RequireJS to load Monaco Editor -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
