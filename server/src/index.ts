@@ -8,10 +8,9 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // --- CONFIGURATION ---
-// Set your password here or via environment variable
 const ACCESS_PASSWORD = process.env.EDITOR_PASSWORD || 'admin123';
-// Default workspace is the parent directory of the project root
-const ROOT_DIR = path.resolve(__dirname, '../../');
+// Use WORKSPACE_ROOT env var if provided, otherwise default to parent directory
+const ROOT_DIR = process.env.WORKSPACE_ROOT ? path.resolve(process.env.WORKSPACE_ROOT) : path.resolve(__dirname, '../../');
 const CLIENT_BUILD_PATH = path.resolve(__dirname, '../../client/dist');
 
 // Ensure the directory exists
@@ -146,13 +145,16 @@ app.post('/api/file', (req, res) => {
 // --- STATIC FILES & SPA ROUTING ---
 if (fs.existsSync(CLIENT_BUILD_PATH)) {
   app.use(express.static(CLIENT_BUILD_PATH));
-  app.get('*', (req, res) => {
-    if (!req.path.startsWith('/api')) {
-      res.sendFile(path.join(CLIENT_BUILD_PATH, 'index.html'));
+  
+  // SPA Fallback: Serve index.html for any request that doesn't match an API or static file
+  app.use((req, res, next) => {
+    if (!req.path.startsWith('/api') && req.method === 'GET') {
+      return res.sendFile(path.join(CLIENT_BUILD_PATH, 'index.html'));
     }
+    next();
   });
 }
 
-app.listen(PORT, () => {
-  console.log(`Server running at http://localhost:${PORT}`);
+app.listen(Number(PORT), '0.0.0.0', () => {
+  console.log(`Server running at http://0.0.0.0:${PORT}`);
 });
