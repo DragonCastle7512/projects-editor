@@ -15,55 +15,49 @@ function App() {
   const [isSaving, setIsSaving] = useState(false);
   
   // Auth State
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [password, setPassword] = useState(localStorage.getItem('editor_password') || '');
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
   const [loginError, setLoginError] = useState('');
 
-  const authHeaders = {
-    'Content-Type': 'application/json',
-    'x-editor-password': password
+  const fetchOptions: RequestInit = {
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    credentials: 'include'
   };
 
   const fetchFileTree = useCallback(async () => {
-    if (!isAuthenticated) return;
     try {
-      const response = await fetch(`${API_BASE}/files`, { headers: authHeaders });
+      const response = await fetch(`${API_BASE}/files`, fetchOptions);
       if (response.status === 401) {
         setIsAuthenticated(false);
         return;
       }
       const data = await response.json();
       setFileTree(data.tree || []);
+      setIsAuthenticated(true);
     } catch (error) {
       console.error('Failed to fetch file tree:', error);
-    }
-  }, [isAuthenticated, password]);
-
-  useEffect(() => {
-    if (password) {
-      handleLogin(password);
+      setIsAuthenticated(false);
     }
   }, []);
 
   useEffect(() => {
-    if (isAuthenticated) {
-      fetchFileTree();
-    }
-  }, [isAuthenticated, fetchFileTree]);
+    // Check initial auth status by trying to fetch file tree
+    fetchFileTree();
+  }, [fetchFileTree]);
 
   const handleLogin = async (inputPassword: string) => {
     try {
       const response = await fetch(`${API_BASE}/login`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        ...fetchOptions,
         body: JSON.stringify({ password: inputPassword })
       });
 
       if (response.ok) {
         setIsAuthenticated(true);
-        setPassword(inputPassword);
-        localStorage.setItem('editor_password', inputPassword);
         setLoginError('');
+        fetchFileTree();
       } else {
         setLoginError('Invalid password');
         setIsAuthenticated(false);
@@ -73,10 +67,19 @@ function App() {
     }
   };
 
-  const handleLogout = () => {
-    setIsAuthenticated(false);
-    setPassword('');
-    localStorage.removeItem('editor_password');
+  const handleLogout = async () => {
+    try {
+      await fetch(`${API_BASE}/logout`, {
+        method: 'POST',
+        ...fetchOptions
+      });
+    } catch (error) {
+      console.error('Logout failed:', error);
+    } finally {
+      setIsAuthenticated(false);
+      setFileTree([]);
+      setActiveFile(null);
+    }
   };
 
   const openFile = async (path: string) => {
@@ -87,9 +90,11 @@ function App() {
     }
 
     try {
-      const response = await fetch(`${API_BASE}/file?path=${encodeURIComponent(path)}`, {
-        headers: authHeaders
-      });
+      const response = await fetch(`${API_BASE}/file?path=${encodeURIComponent(path)}`, fetchOptions);
+      if (response.status === 401) {
+        setIsAuthenticated(false);
+        return;
+      }
       if (!response.ok) throw new Error('Failed to load file');
       const text = await response.text();
       setActiveFile(path);
@@ -108,10 +113,14 @@ function App() {
     try {
       const response = await fetch(`${API_BASE}/file`, {
         method: 'POST',
-        headers: authHeaders,
+        ...fetchOptions,
         body: JSON.stringify({ path: activeFile, content })
       });
 
+      if (response.status === 401) {
+        setIsAuthenticated(false);
+        return;
+      }
       if (!response.ok) throw new Error('Failed to save');
       setOriginalContent(content);
     } catch (error) {
@@ -155,6 +164,10 @@ function App() {
   };
 
   const isDirty = content !== originalContent;
+
+  if (isAuthenticated === null) {
+    return <div className="h-screen bg-[#0d1117] flex items-center justify-center text-white">Checking access...</div>;
+  }
 
   if (!isAuthenticated) {
     return (
