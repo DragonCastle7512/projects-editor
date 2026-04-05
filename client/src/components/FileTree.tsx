@@ -30,7 +30,7 @@ const FileTreeItem: React.FC<{
     <div>
       <div
         className={`flex items-center py-1 px-2 cursor-pointer hover:bg-gray-700 rounded select-none ${
-          isActive ? 'bg-blue-600 hover:bg-blue-500' : ''
+          isActive ? 'bg-gray-600 hover:bg-gray-500' : ''
         }`}
         style={{ paddingLeft: `${level * 12 + 8}px` }}
         onClick={toggle}
