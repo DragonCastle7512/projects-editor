@@ -23,10 +23,6 @@ COPY --from=builder /app/server/package.json ./server/package.json
 
 RUN cd server && npm install --only=production
 
-ENV PORT=3001
-ENV NODE_ENV=production
-ENV WORKSPACE_ROOT=/projects
-
 EXPOSE 3001
 
 VOLUME /projects
