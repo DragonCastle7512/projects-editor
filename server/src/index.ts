@@ -41,6 +41,6 @@ if (fs.existsSync(CLIENT_BUILD_PATH)) {
   });
 }
 
-app.listen(Number(PORT), '0.0.0.0', () => {
-  console.log(`Server running at http://0.0.0.0:${PORT}`);
+app.listen(Number(PORT), process.env.NODE_ENV ? '0.0.0.0' : '', () => {
+  console.log(`Server running at ${PORT}`);
 });

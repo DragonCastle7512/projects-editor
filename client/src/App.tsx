@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Editor } from '@monaco-editor/react';
 import { Save, RefreshCw, FileCode, Lock, LogOut } from 'lucide-react';
 import { FileTree } from './components/FileTree';
@@ -13,6 +13,7 @@ function App() {
   const [content, setContent] = useState<string>('');
   const [originalContent, setOriginalContent] = useState<string>('');
   const [isSaving, setIsSaving] = useState(false);
+  const editorRef = useRef<any>(null);
   
   // Auth State
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
@@ -142,18 +143,34 @@ function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [content, activeFile, isAuthenticated]);
 
+  const getLanguage = (path: string | null) => {
+    if (!path) return 'javascript';
+    const ext = path.split('.').pop()?.toLowerCase();
+    switch (ext) {
+      case 'ts': return 'typescript';
+      case 'tsx': return 'typescript';
+      case 'js': return 'javascript';
+      case 'jsx': return 'javascript';
+      case 'json': return 'json';
+      case 'css': return 'css';
+      case 'html': return 'html';
+      default: return 'javascript';
+    }
+  };
+
   const handleEditorWillMount = (monaco: any) => {
     const options = {
       target: monaco.languages.typescript.ScriptTarget.ESNext,
       allowNonTsExtensions: true,
       moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
-      module: monaco.languages.typescript.ModuleKind.ESNext,
+      module: monaco.languages.typescript.ModuleKind.CommonJS,
       noEmit: true,
-      jsx: 4, 
+      jsx: 2, // React
       allowJs: true,
       typeRoots: ['node_modules/@types'],
       allowSyntheticDefaultImports: true,
       esModuleInterop: true,
+      lib: ['esnext', 'dom', 'dom.iterable'],
     };
     monaco.languages.typescript.typescriptDefaults.setCompilerOptions(options);
     monaco.languages.typescript.javascriptDefaults.setCompilerOptions(options);
@@ -161,6 +178,40 @@ function App() {
     monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
       noSemanticValidation: true,
     });
+
+    // Custom theme for better syntax highlighting (VS Code Dark Modern style)
+    monaco.editor.defineTheme('vs-dark-plus', {
+      base: 'vs-dark',
+      inherit: true,
+      rules: [
+        { token: '', foreground: 'cccccc' },
+        { token: 'keyword', foreground: '569cd6' },
+        { token: 'keyword.control', foreground: 'c586c0' },
+        { token: 'type', foreground: '4ec9b0' },
+        { token: 'class', foreground: '4ec9b0' },
+        { token: 'function', foreground: 'dcdcaa' },
+        { token: 'method', foreground: 'dcdcaa' },
+        { token: 'identifier', foreground: '9cdcfe' },
+        { token: 'variable', foreground: '9cdcfe' },
+        { token: 'variable.readonly', foreground: '4fc1ff' },
+        { token: 'string', foreground: 'ce9178' },
+        { token: 'number', foreground: 'b5cea8' },
+        { token: 'comment', foreground: '6a9955' },
+        { token: 'operator', foreground: 'd4d4d4' },
+      ],
+      colors: {
+        'editor.background': '#1f1f1f',
+        'editor.foreground': '#cccccc',
+        'editorCursor.foreground': '#aeafad',
+        'editor.lineHighlightBackground': '#2b2b2b',
+        'editorLineNumber.foreground': '#858585',
+        'editor.selectionBackground': '#264f78',
+      }
+    });
+  };
+
+  const handleEditorDidMount = (editor: any) => {
+    editorRef.current = editor;
   };
 
   const isDirty = content !== originalContent;
@@ -269,17 +320,20 @@ function App() {
           {activeFile ? (
             <Editor
               height="100%"
-              theme="vs-dark"
+              theme="vs-dark-plus"
               path={activeFile}
+              language={getLanguage(activeFile)}
               value={content}
               onChange={(value) => setContent(value || '')}
               beforeMount={handleEditorWillMount}
+              onMount={handleEditorDidMount}
               options={{
                 fontSize: 14,
                 minimap: { enabled: true },
                 scrollBeyondLastLine: false,
                 automaticLayout: true,
-                padding: { top: 10 }
+                padding: { top: 10 },
+                'semanticHighlighting.enabled': true
               }}
             />
           ) : (

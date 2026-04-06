@@ -19,7 +19,7 @@ function getFileTree(dirPath: string, relativePath: string = ''): FileItem[] {
   const items: FileItem[] = [];
 
   files.forEach((file) => {
-    if (['node_modules', '.git', 'dist', '.next', '.gemini'].includes(file)) return;
+    if (['node_modules', '.git', 'dist', '.next', '.gemini', '.env'].includes(file)) return;
 
     const fullPath = path.join(dirPath, file);
     const relPath = path.join(relativePath, file);
