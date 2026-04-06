@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Editor } from '@monaco-editor/react';
-import { Save, RefreshCw, FileCode, Lock, LogOut } from 'lucide-react';
-import { FileTree } from './components/FileTree';
+import { Login } from './components/Login';
+import { EditorView } from './components/EditorView';
+import { updateDiagnosticsOptions } from './config/monacoConfig';
 import type { FileItem } from './types';
 
 // Use relative API base or environment variable
@@ -13,7 +13,9 @@ function App() {
   const [content, setContent] = useState<string>('');
   const [originalContent, setOriginalContent] = useState<string>('');
   const [isSaving, setIsSaving] = useState(false);
+  const [semanticValidation, setSemanticValidation] = useState(false);
   const editorRef = useRef<any>(null);
+  const monacoRef = useRef<any>(null);
   
   // Auth State
   const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
@@ -25,6 +27,10 @@ function App() {
     },
     credentials: 'include'
   };
+
+  useEffect(() => {
+    updateDiagnosticsOptions(monacoRef.current, semanticValidation);
+  }, [semanticValidation]);
 
   const fetchFileTree = useCallback(async () => {
     try {
@@ -143,77 +149,6 @@ function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [content, activeFile, isAuthenticated]);
 
-  const getLanguage = (path: string | null) => {
-    if (!path) return 'javascript';
-    const ext = path.split('.').pop()?.toLowerCase();
-    switch (ext) {
-      case 'ts': return 'typescript';
-      case 'tsx': return 'typescript';
-      case 'js': return 'javascript';
-      case 'jsx': return 'javascript';
-      case 'json': return 'json';
-      case 'css': return 'css';
-      case 'html': return 'html';
-      default: return 'javascript';
-    }
-  };
-
-  const handleEditorWillMount = (monaco: any) => {
-    const options = {
-      target: monaco.languages.typescript.ScriptTarget.ESNext,
-      allowNonTsExtensions: true,
-      moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
-      module: monaco.languages.typescript.ModuleKind.CommonJS,
-      noEmit: true,
-      jsx: 2, // React
-      allowJs: true,
-      typeRoots: ['node_modules/@types'],
-      allowSyntheticDefaultImports: true,
-      esModuleInterop: true,
-      lib: ['esnext', 'dom', 'dom.iterable'],
-    };
-    monaco.languages.typescript.typescriptDefaults.setCompilerOptions(options);
-    monaco.languages.typescript.javascriptDefaults.setCompilerOptions(options);
-
-    monaco.languages.typescript.typescriptDefaults.setDiagnosticsOptions({
-      noSemanticValidation: true,
-    });
-
-    // Custom theme for better syntax highlighting (VS Code Dark Modern style)
-    monaco.editor.defineTheme('vs-dark-plus', {
-      base: 'vs-dark',
-      inherit: true,
-      rules: [
-        { token: '', foreground: 'cccccc' },
-        { token: 'keyword', foreground: '569cd6' },
-        { token: 'keyword.control', foreground: 'c586c0' },
-        { token: 'type', foreground: '4ec9b0' },
-        { token: 'class', foreground: '4ec9b0' },
-        { token: 'function', foreground: 'dcdcaa' },
-        { token: 'method', foreground: 'dcdcaa' },
-        { token: 'identifier', foreground: '9cdcfe' },
-        { token: 'variable', foreground: '9cdcfe' },
-        { token: 'variable.readonly', foreground: '4fc1ff' },
-        { token: 'string', foreground: 'ce9178' },
-        { token: 'number', foreground: 'b5cea8' },
-        { token: 'comment', foreground: '6a9955' },
-        { token: 'operator', foreground: 'd4d4d4' },
-      ],
-      colors: {
-        'editor.background': '#1f1f1f',
-        'editor.foreground': '#cccccc',
-        'editorCursor.foreground': '#aeafad',
-        'editor.lineHighlightBackground': '#2b2b2b',
-        'editorLineNumber.foreground': '#858585',
-        'editor.selectionBackground': '#264f78',
-      }
-    });
-  };
-
-  const handleEditorDidMount = (editor: any) => {
-    editorRef.current = editor;
-  };
-
   const isDirty = content !== originalContent;
 
   if (isAuthenticated === null) {
@@ -221,131 +156,26 @@ function App() {
   }
 
   if (!isAuthenticated) {
-    return (
-      <div className="flex items-center justify-center h-screen bg-[#0d1117] text-white">
-        <div className="bg-[#161b22] p-8 rounded-lg shadow-xl border border-gray-800 w-full max-w-md">
-          <div className="flex flex-col items-center gap-4 mb-8">
-            <div className="bg-blue-600 p-3 rounded-full">
-              <Lock size={32} />
-            </div>
-            <h1 className="text-2xl font-bold">Protected Area</h1>
-            <p className="text-gray-400 text-sm">Enter password to access the editor</p>
-          </div>
-          <form onSubmit={(e) => {
-            e.preventDefault();
-            const val = (e.currentTarget.elements.namedItem('pwd') as HTMLInputElement).value;
-            handleLogin(val);
-          }}>
-            <input
-              type="password"
-              name="pwd"
-              placeholder="Password"
-              autoFocus
-              className="w-full bg-[#0d1117] border border-gray-700 rounded-md py-2 px-4 mb-4 focus:outline-none focus:border-blue-500 transition-colors"
-            />
-            {loginError && <p className="text-red-500 text-xs mb-4">{loginError}</p>}
-            <button
-              type="submit"
-              className="w-full bg-blue-600 hover:bg-blue-500 py-2 rounded-md font-semibold transition-colors"
-            >
-              Sign In
-            </button>
-          </form>
-        </div>
-      </div>
-    );
+    return <Login onLogin={handleLogin} error={loginError} />;
   }
 
   return (
-    <div className="flex h-screen w-full bg-[#1e1e1e] text-gray-300 overflow-hidden">
-      {/* Sidebar */}
-      <div className="w-64 flex-shrink-0 border-r border-gray-800 flex flex-col">
-        <div className="p-4 border-b border-gray-800 flex items-center justify-between">
-          <div className="flex items-center gap-2 font-semibold text-white">
-            <FileCode className="text-blue-400" size={20} />
-            <span>OpenClaw Editor</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <button 
-              onClick={fetchFileTree}
-              className="p-1 hover:bg-gray-800 rounded text-gray-400 hover:text-white transition-colors"
-              title="Refresh"
-            >
-              <RefreshCw size={16} />
-            </button>
-            <button 
-              onClick={handleLogout}
-              className="p-1 hover:bg-red-900/30 rounded text-gray-400 hover:text-red-400 transition-colors"
-              title="Logout"
-            >
-              <LogOut size={16} />
-            </button>
-          </div>
-        </div>
-        <div className="flex-1 overflow-hidden">
-          <FileTree 
-            items={fileTree} 
-            onFileSelect={openFile} 
-            activePath={activeFile} 
-          />
-        </div>
-      </div>
-
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Header */}
-        <div className="h-12 border-b border-gray-800 flex items-center justify-between px-4 bg-[#252526]">
-          <div className="text-sm truncate mr-4">
-            {activeFile ? activeFile : 'Select a file to start editing'}
-            {isDirty && <span className="ml-2 text-yellow-500 font-bold">•</span>}
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={saveFile}
-              disabled={!activeFile || !isDirty || isSaving}
-              className={`flex items-center gap-2 px-3 py-1 rounded text-sm transition-colors ${
-                !activeFile || !isDirty || isSaving
-                  ? 'bg-gray-800 text-gray-500 cursor-not-allowed'
-                  : 'bg-blue-600 hover:bg-blue-500 text-white'
-              }`}
-            >
-              <Save size={14} />
-              {isSaving ? 'Saving...' : 'Save'}
-            </button>
-          </div>
-        </div>
-
-        {/* Editor */}
-        <div className="flex-1 relative">
-          {activeFile ? (
-            <Editor
-              height="100%"
-              theme="vs-dark-plus"
-              path={activeFile}
-              language={getLanguage(activeFile)}
-              value={content}
-              onChange={(value) => setContent(value || '')}
-              beforeMount={handleEditorWillMount}
-              onMount={handleEditorDidMount}
-              options={{
-                fontSize: 14,
-                minimap: { enabled: true },
-                scrollBeyondLastLine: false,
-                automaticLayout: true,
-                padding: { top: 10 },
-                'semanticHighlighting.enabled': true
-              }}
-            />
-          ) : (
-            <div className="absolute inset-0 flex items-center justify-center text-gray-600 flex-col gap-4">
-              <FileCode size={64} className="opacity-20" />
-              <p>Welcome to OpenClaw Editor</p>
-              <p className="text-sm opacity-50">Select a file from the sidebar to begin</p>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
+    <EditorView 
+      fileTree={fileTree}
+      activeFile={activeFile}
+      content={content}
+      isSaving={isSaving}
+      isDirty={isDirty}
+      semanticValidation={semanticValidation}
+      onRefresh={fetchFileTree}
+      onLogout={handleLogout}
+      onFileSelect={openFile}
+      onContentChange={setContent}
+      onSave={saveFile}
+      setSemanticValidation={setSemanticValidation}
+      editorRef={editorRef}
+      monacoRef={monacoRef}
+    />
   );
 }
 
