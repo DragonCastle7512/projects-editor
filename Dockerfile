@@ -1,30 +1,45 @@
-FROM node:20-slim AS builder
+# --- Base Layer ---
+FROM node:20-alpine AS base
+RUN npm install -g npm@latest
 WORKDIR /app
 
-COPY package*.json ./
-COPY server/package*.json ./server/
-COPY client/package*.json ./client/
+# --- Server Builder ---
+FROM base AS server-builder
+WORKDIR /app/server
+# 의존성 파일만 먼저 복사하여 캐시 극대화
+COPY server/package*.json ./
+RUN npm ci --silent
 
-RUN npm install
-RUN cd server && npm install
-RUN cd client && npm install
+# 소스 복사 후 빌드
+COPY server/ ./
+RUN npm run build
 
-COPY . .
-RUN cd server && npm run build
-RUN cd client && npm run build
+# --- Client Builder ---
+FROM base AS client-builder
+WORKDIR /app/client
+COPY client/package*.json ./
+RUN npm ci --silent
 
-FROM node:20-slim
+# 소스 복사 후 빌드
+COPY client/ ./
+RUN npm run build
+
+# --- Final Production Image ---
+FROM node:20-alpine AS runner
 WORKDIR /app
+ENV NODE_ENV=production
 
-COPY --from=builder /app/package.json ./
-COPY --from=builder /app/server/dist ./server/dist
-COPY --from=builder /app/client/dist ./client/dist
-COPY --from=builder /app/server/package.json ./server/package.json
+# 빌드된 결과물만 복사
+COPY --from=server-builder /app/server/dist ./server/dist
+COPY --from=server-builder /app/server/package*.json ./server/
+COPY --from=client-builder /app/client/dist ./client/dist
 
-RUN cd server && npm install --only=production
+# 프로덕션 전용 패키지 설치
+RUN cd server && npm ci --only=production --silent
 
 EXPOSE 3001
-
 VOLUME /projects
 
-CMD ["npm", "start"]
+# 실행 스크립트
+WORKDIR /app/server
+CMD ["node", "dist/index.js"]
